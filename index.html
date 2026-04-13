@@ -304,43 +304,52 @@ async function generateReport() {
     log(`Settlement Recon: ${reconRows.length} rows (${files.recon2 ? '2 files merged' : '1 file'})`, '✅');
     setProgress(55);
 
-    // Step 3: Build DST Main Sheet
+    // Step 3: Build DST Main Sheet — Source is RAW (filtered: EMI/EMI+CHARGE/CHARGE, exclude MIRAE)
     log('Building Rzp DST main sheet...');
     const dstRows = [];
-    reconRows.forEach(r => {
+    rawRows.forEach(r => {
+      const lender = String(r['LENDER'] || '').trim().toUpperCase();
+      const payType = String(r['payment_type'] || '').trim().toUpperCase();
+
+      // MIRAE exclude karo
+      if (lender === 'MIRAE') return;
+
+      // Sirf EMI, EMI+CHARGE, CHARGE include karo
+      if (!['EMI', 'EMI+CHARGE', 'CHARGE'].includes(payType)) return;
+
       const payId = String(r['Pay ID'] || '').trim();
       const appId = String(r['Application ID'] || '').trim();
       const orderId = String(r['Order ID'] || '').trim();
       const settled = cleanNum(r['Settled Amount']);
-      const lender = String(r['LENDER'] || '').trim();
       const utr = String(r['Lender UTR'] || '').trim();
       const settlDate = fmtDate(r['Settlement Date']);
-      const payType = String(r['payment_type'] || '').trim();
       const source = String(r['source'] || '').trim();
 
-      // Get charge breakdown
+      // Get charge breakdown from Charge Report
       const charge = chargeByPayId[payId] || {};
       const mandate = cleanNum(charge['mandate_alloc']);
       const bounce = cleanNum(charge['bounce_alloc']);
       const lpi = cleanNum(charge['lpp_alloc']);
       const totalCharges = mandate + bounce + lpi;
+
+      // EMI = Settled - charges (0 for pure CHARGE type)
       const emi = settled - totalCharges;
 
       // Get EMI date from transaction log
       const txn = txnByPayId[payId] || txnByOrderId[orderId] || {};
       const emiDate = fmtDate(txn['DATE'] || txn['date'] || '');
-      const txnType = txn['PAYMENT TYPE'] || txn['payment_type'] || payType;
+      const txnType = txn['PAYMENT TYPE'] || txn['payment_type'] || r['payment_type'] || '';
 
       const total = emi + mandate + bounce + lpi;
       const diff = settled - total;
 
       dstRows.push({
-        'LENDER': lender,
+        'LENDER': String(r['LENDER'] || '').trim(),
         'Event Type': r['Event Type'] || '',
         'Pay ID': payId,
         'Application ID': appId,
         'Order ID': orderId,
-        'payment_type': payType,
+        'payment_type': r['payment_type'] || '',
         'payment_uuid': r['payment_uuid'] || '',
         'source_id': r['source_id'] || '',
         'source': source,
@@ -358,7 +367,7 @@ async function generateReport() {
         'Value Date(Transaction Date)': emiDate,
       });
     });
-    log(`Rzp DST sheet: ${dstRows.length} rows built`, '✅');
+    log(`Rzp DST sheet: ${dstRows.length} rows built (MIRAE excluded, EMI/EMI+CHARGE/CHARGE only)`, '✅');
     setProgress(68);
 
     // Step 4: Build DPM Sheet
