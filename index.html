@@ -337,17 +337,29 @@ async function generateReport() {
       const source = String(r['source'] || '').trim();
 
       // Get charge breakdown from Charge Report (match by Pay ID)
-      const charge = chargeByPayId[payId] || {};
-      let mandate = cleanNum(charge['mandate_alloc']);
-      let bounce  = cleanNum(charge['bounce_alloc']);
-      let lpi     = cleanNum(charge['lpp_alloc']);
+      const charge = chargeByPayId[payId] || null;
+      let mandate = charge ? cleanNum(charge['mandate_alloc']) : 0;
+      let bounce  = charge ? cleanNum(charge['bounce_alloc'])  : 0;
+      let lpi     = charge ? cleanNum(charge['lpp_alloc'])     : 0;
 
-      // ISSUE 2 FIX: CHARGE type rows where Charge Report has no match OR zero values
-      // Rule: if payment_type = CHARGE and total charges = 0 → full Settled Amount = Bounce Charges
-      if ((payType === 'CHARGE' || payType === 'EMI+CHARGE') && 
-          mandate === 0 && bounce === 0 && lpi === 0) {
-        // Not found in Charge Report — treat full settled as Bounce
-        bounce = settled;
+      // CHARGE logic:
+      // payment_type = CHARGE → always Bounce = Settled (whether in charge report or not)
+      // payment_type = EMI+CHARGE:
+      //   → found in Charge Report AND has charge values → Bounce/Mandate/LPI = charge amounts, EMI = Settled - charges
+      //   → NOT found in Charge Report (CHARGES=#N/A) → EMI = full Settled, Bounce = 0
+      if (payType === 'CHARGE') {
+        // Pure charge row — full amount is bounce (use charge report split if available)
+        if (mandate === 0 && bounce === 0 && lpi === 0) {
+          bounce = settled; // No charge report match → full = bounce
+        }
+        // If charge report has values, they are already set above
+      } else if (payType === 'EMI+CHARGE') {
+        // Only apply charges if Charge Report actually has a match with values
+        if (!charge || (mandate === 0 && bounce === 0 && lpi === 0)) {
+          // No charge found → treat as pure EMI
+          mandate = 0; bounce = 0; lpi = 0;
+        }
+        // If charge found with values → already set above, EMI = Settled - charges
       }
 
       const totalCharges = mandate + bounce + lpi;
