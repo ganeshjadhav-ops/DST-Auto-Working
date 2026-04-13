@@ -278,18 +278,29 @@ async function generateReport() {
     log(`Charge Report: ${chrRows.length} rows, ${Object.keys(chargeByPayId).length} unique Pay IDs`, '✅');
     setProgress(30);
 
-    log('Reading Transaction Logs (EMI sheet)...');
+    log('Reading Transaction Logs (EMI + Charge sheets)...');
     const wbTxn = await readExcel(files.txn);
-    const txnRows = sheetToRows(wbTxn, 'EMI');
     const txnByPayId = {};
     const txnByOrderId = {};
+    const chargeTypeByPayId = {}; // For CHARGE type rows from Charge sheet
+
+    // Read EMI sheet
+    const txnRows = sheetToRows(wbTxn, 'EMI');
     txnRows.forEach(r => {
       const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
       const oid = String(r['ORDER ID'] || r['order_id'] || '').trim();
       if (tid && tid !== 'None') txnByPayId[tid] = r;
       if (oid && oid !== 'None') txnByOrderId[oid] = r;
     });
-    log(`Transaction Logs: ${txnRows.length} rows loaded`, '✅');
+
+    // Read Charge sheet — for pure CHARGE type rows
+    const chargeSheetRows = sheetToRows(wbTxn, 'Charge');
+    chargeSheetRows.forEach(r => {
+      const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
+      if (tid && tid !== 'None') chargeTypeByPayId[tid] = r;
+    });
+
+    log(`Transaction Logs: EMI=${txnRows.length} rows, Charge=${chargeSheetRows.length} rows`, '✅');
     setProgress(45);
 
     // Step 2: Merge settlement recons
@@ -325,13 +336,21 @@ async function generateReport() {
       const settlDate = fmtDate(r['Settlement Date']);
       const source = String(r['source'] || '').trim();
 
-      // Get charge breakdown from Charge Report
+      // Get charge breakdown from Charge Report (match by Pay ID)
       const charge = chargeByPayId[payId] || {};
-      const mandate = cleanNum(charge['mandate_alloc']);
-      const bounce = cleanNum(charge['bounce_alloc']);
-      const lpi = cleanNum(charge['lpp_alloc']);
-      const totalCharges = mandate + bounce + lpi;
+      let mandate = cleanNum(charge['mandate_alloc']);
+      let bounce  = cleanNum(charge['bounce_alloc']);
+      let lpi     = cleanNum(charge['lpp_alloc']);
 
+      // ISSUE 2 FIX: CHARGE type rows where Charge Report has no match OR zero values
+      // Rule: if payment_type = CHARGE and total charges = 0 → full Settled Amount = Bounce Charges
+      if ((payType === 'CHARGE' || payType === 'EMI+CHARGE') && 
+          mandate === 0 && bounce === 0 && lpi === 0) {
+        // Not found in Charge Report — treat full settled as Bounce
+        bounce = settled;
+      }
+
+      const totalCharges = mandate + bounce + lpi;
       // EMI = Settled - charges (0 for pure CHARGE type)
       const emi = settled - totalCharges;
 
@@ -401,9 +420,9 @@ async function generateReport() {
       };
 
       if (emi > 0) dpmRows.push({...base, 'Payment Type': 'EMI', 'Amount': emi});
-      if (mandate > 0) dpmRows.push({...base, 'Payment Type': 'Mandate Charges', 'Amount': mandate});
+      if (mandate > 0) dpmRows.push({...base, 'Payment Type': 'Mandate Activation Charges', 'Amount': mandate});
       if (bounce > 0) dpmRows.push({...base, 'Payment Type': 'Bounce Charges', 'Amount': bounce});
-      if (lpi > 0) dpmRows.push({...base, 'Payment Type': 'LPI', 'Amount': lpi});
+      if (lpi > 0) dpmRows.push({...base, 'Payment Type': 'LPP Charges', 'Amount': lpi});
     });
     log(`DPM sheet: ${dpmRows.length} rows built`, '✅');
     setProgress(80);
