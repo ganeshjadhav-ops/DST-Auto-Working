@@ -345,42 +345,47 @@ async function generateReport() {
       const hasCharges = mandate > 0 || bounce > 0 || lpi > 0;
 
       let emi = 0;
+      let isDoubtful = false;
+      let doubtReason = '';
 
       // ── CORE LOGIC ──
-      // Priority: RAW payment_type + Charge Report data
-      //
-      // CHARGE (RAW or TxnLog) → use Charge Report split; if none → full = Bounce
-      // EMI+CHARGE → ALWAYS check Charge Report first:
-      //   Charge Report found with values → EMI = Settled - charges
-      //   Charge Report not found / zero  → full = EMI (TxnLog says EMI = no charges)
-      // EMI (RAW) → full = EMI (no charges)
-
       if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
-        // Pure charge row
+        // CHARGE type — Charge Report split
         if (hasCharges) {
-          // Use charge report split — add emi_alloc to EMI if present
-          const emiAlloc = charge ? cleanNum(charge['emi_alloc']) : 0;
-          emi = emiAlloc;
+          // emi_alloc ignored for CHARGE — it's a system artifact
+          emi = 0;
+          // Check if TxnLog says Emi+ something → then EMI = Settled - charges
+          if (/emi/i.test(txnPayType) && settled > (mandate+bounce+lpi)) {
+            emi = settled - (mandate+bounce+lpi);
+          }
         } else {
           bounce = settled; emi = 0;
         }
+      } else if (txnPayType === 'BOUNCE' || (txnPayType && /^bounce$/i.test(txnPayType.trim()))) {
+        // TxnLog = pure BOUNCE → full = Bounce
+        bounce = settled; emi = 0;
       } else if (rawPayType === 'EMI+CHARGE') {
-        // Charge Report is the authority for EMI+CHARGE
+        // Charge Report authority
         if (hasCharges) {
-          // Charge Report has split → EMI = Settled - (mandate+bounce+lpi)
-          emi = settled - (mandate + bounce + lpi);
+          emi = settled - (mandate+bounce+lpi);
           if (emi < 0) emi = 0;
         } else {
-          // No charges found → pure EMI
-          emi = settled; mandate = 0; bounce = 0; lpi = 0;
+          emi = settled; mandate=0; bounce=0; lpi=0;
         }
       } else {
         // Pure EMI
-        emi = settled; mandate = 0; bounce = 0; lpi = 0;
+        emi = settled; mandate=0; bounce=0; lpi=0;
       }
 
       const total = emi + mandate + bounce + lpi;
       const diff  = settled - total;
+
+      // ── DOUBT CHECK ──
+      // Mark as doubtful if Total != Settled (something is off)
+      if (Math.abs(diff) > 0.5) {
+        isDoubtful = true;
+        doubtReason = `MANUAL CHECK REQUIRED — Total(${total.toFixed(0)}) != Settled(${settled.toFixed(0)}), Diff=${diff.toFixed(0)}`;
+      }
 
       dstRows.push({
         'LENDER': String(r['LENDER'] || '').trim(),
@@ -402,8 +407,9 @@ async function generateReport() {
         'LPI': lpi > 0 ? lpi : '',
         'Total': total,
         'Diff': diff,
-        'Remarks': '',
+        'Remarks': isDoubtful ? doubtReason : '',
         'Value Date(Transaction Date)': emiDate,
+        '_doubtful': isDoubtful,  // internal flag for DPM
       });
     });
     log(`Rzp DST: ${dstRows.length} rows built`, '✅'); setProgress(65);
@@ -411,6 +417,7 @@ async function generateReport() {
     // 6. Build DPM Sheet
     log('Building DPM sheet...');
     const dpmRows = [];
+    let dpmSkipped = 0;
     dstRows.forEach(r => {
       const base = {
         'App id': r['Application ID'],
@@ -431,12 +438,24 @@ async function generateReport() {
       const bounce  = cleanNum(r['Bounce Charges']);
       const lpi     = cleanNum(r['LPI']);
 
+      if (r['_doubtful']) {
+        // Add single row marked as NOT ADDED for manual review
+        dpmSkipped++;
+        dpmRows.push({
+          ...base,
+          'Payment Type': r['payment_type'] || '',
+          'Amount': cleanNum(r['Settled Amount']),
+          'Remarks': 'NOT ADDED IN DPM — ' + r['Remarks'],
+        });
+        return;
+      }
+
       if (emi > 0)     dpmRows.push({...base, 'Payment Type': 'EMI',                        'Amount': emi});
       if (mandate > 0) dpmRows.push({...base, 'Payment Type': 'Mandate Activation Charges', 'Amount': mandate});
       if (bounce > 0)  dpmRows.push({...base, 'Payment Type': 'Bounce Charges',             'Amount': bounce});
       if (lpi > 0)     dpmRows.push({...base, 'Payment Type': 'LPP Charges',                'Amount': lpi});
     });
-    log(`DPM: ${dpmRows.length} rows built`, '✅'); setProgress(80);
+    log(`DPM: ${dpmRows.length} rows (${dpmSkipped} marked for manual check)`, '✅'); setProgress(80);
 
     // 7. Build Pivot
     log('Building Pivot...');
@@ -464,11 +483,15 @@ async function generateReport() {
     // 8. Create Excel
     log('Creating Excel file...');
     const wb = XLSX.utils.book_new();
+
+    // Strip internal _doubtful flag from DST rows
+    const dstClean = dstRows.map(r => { const {_doubtful, ...rest} = r; return rest; });
+
     const wsPivot = XLSX.utils.json_to_sheet(pivotRows);
     wsPivot['!cols'] = [{wch:38},{wch:22}];
     XLSX.utils.book_append_sheet(wb, wsPivot, 'Pivot');
 
-    const wsDST = XLSX.utils.json_to_sheet(dstRows);
+    const wsDST = XLSX.utils.json_to_sheet(dstClean);
     wsDST['!cols'] = [{wch:12},{wch:10},{wch:22},{wch:12},{wch:24},{wch:14},{wch:36},{wch:10},{wch:22},{wch:14},{wch:26},{wch:14},{wch:20},{wch:10},{wch:16},{wch:16},{wch:8},{wch:12},{wch:8},{wch:12},{wch:20}];
     XLSX.utils.book_append_sheet(wb, wsDST, 'Rzp DST');
 
@@ -482,8 +505,8 @@ async function generateReport() {
 
     document.getElementById('result-stats').innerHTML = `
       <div class="stat-box"><div class="stat-num">${dstRows.length}</div><div class="stat-lbl">Rzp DST Rows</div></div>
-      <div class="stat-box"><div class="stat-num">${dpmRows.length}</div><div class="stat-lbl">DPM Rows</div></div>
-      <div class="stat-box"><div class="stat-num">${Object.keys(pivotByLender).length}</div><div class="stat-lbl">Lenders</div></div>
+      <div class="stat-box"><div class="stat-num">${dpmRows.length - dpmSkipped}</div><div class="stat-lbl">DPM Rows Added</div></div>
+      <div class="stat-box" style="background:#fff3e0;border-color:#ffcc80;"><div class="stat-num" style="color:var(--orange);">${dpmSkipped}</div><div class="stat-lbl">Manual Check Required</div></div>
       <div class="stat-box"><div class="stat-num" style="font-size:14px;">₹${grandTotal.toLocaleString('en-IN')}</div><div class="stat-lbl">Grand Total</div></div>`;
 
     const outName = (document.getElementById('output-name').value.trim() || 'Rzp_DST_Output') + '.xlsx';
