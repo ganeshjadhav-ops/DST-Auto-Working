@@ -348,13 +348,13 @@ async function generateReport() {
       let isDoubtful = false;
       let doubtReason = '';
 
+      // Flag if Pay ID not found in Transaction Log at all
+      const txnFound = Object.keys(txn).length > 0;
+
       // ── CORE LOGIC ──
       if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
-        // CHARGE type — Charge Report split
         if (hasCharges) {
-          // emi_alloc ignored for CHARGE — it's a system artifact
           emi = 0;
-          // Check if TxnLog says Emi+ something → then EMI = Settled - charges
           if (/emi/i.test(txnPayType) && settled > (mandate+bounce+lpi)) {
             emi = settled - (mandate+bounce+lpi);
           }
@@ -362,10 +362,8 @@ async function generateReport() {
           bounce = settled; emi = 0;
         }
       } else if (txnPayType === 'BOUNCE' || (txnPayType && /^bounce$/i.test(txnPayType.trim()))) {
-        // TxnLog = pure BOUNCE → full = Bounce
         bounce = settled; emi = 0;
       } else if (rawPayType === 'EMI+CHARGE') {
-        // Charge Report authority
         if (hasCharges) {
           emi = settled - (mandate+bounce+lpi);
           if (emi < 0) emi = 0;
@@ -381,10 +379,15 @@ async function generateReport() {
       const diff  = settled - total;
 
       // ── DOUBT CHECK ──
-      // Mark as doubtful if Total != Settled (something is off)
+      // 1. Total != Settled
       if (Math.abs(diff) > 0.5) {
         isDoubtful = true;
         doubtReason = `MANUAL CHECK REQUIRED — Total(${total.toFixed(0)}) != Settled(${settled.toFixed(0)}), Diff=${diff.toFixed(0)}`;
+      }
+      // 2. Pay ID not found in Transaction Log — split might be wrong
+      if (!txnFound && !isDoubtful) {
+        isDoubtful = true;
+        doubtReason = `MANUAL CHECK REQUIRED — Pay ID not found in Transaction Log, split unverified`;
       }
 
       dstRows.push({
@@ -486,6 +489,18 @@ async function generateReport() {
 
     // Strip internal _doubtful flag from DST rows
     const dstClean = dstRows.map(r => { const {_doubtful, ...rest} = r; return rest; });
+
+    // ── SUMMARY SHEET ──
+    const confirmedRows = dpmRows.filter(r => !String(r['Remarks']||'').includes('NOT ADDED'));
+    const pendingRows   = dpmRows.filter(r => String(r['Remarks']||'').includes('NOT ADDED'));
+    const summaryData = [
+      { 'Category': '✅ Added in DPM',            'Rows': confirmedRows.length, 'Amount (₹)': confirmedRows.reduce((s,r)=>s+cleanNum(r['Amount']),0) },
+      { 'Category': '⚠️ Manual Check Required',   'Rows': pendingRows.length,   'Amount (₹)': pendingRows.reduce((s,r)=>s+cleanNum(r['Amount']),0)   },
+      { 'Category': 'TOTAL (Rzp DST)',             'Rows': dstRows.length,       'Amount (₹)': grandTotal },
+    ];
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    wsSummary['!cols'] = [{wch:30},{wch:10},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
     const wsPivot = XLSX.utils.json_to_sheet(pivotRows);
     wsPivot['!cols'] = [{wch:38},{wch:22}];
