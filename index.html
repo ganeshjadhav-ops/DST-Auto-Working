@@ -354,10 +354,10 @@ async function generateReport() {
       // ── CORE LOGIC ──
       if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
         if (hasCharges) {
-          emi = 0;
-          if (/emi/i.test(txnPayType) && settled > (mandate+bounce+lpi)) {
-            emi = settled - (mandate+bounce+lpi);
-          }
+          const chargeTotal = mandate + bounce + lpi;
+          emi = settled - chargeTotal;
+          // For pure CHARGE rows, emi_alloc is a system artifact — ignore tiny EMI values
+          if (emi < 1) emi = 0;
         } else {
           bounce = settled; emi = 0;
         }
