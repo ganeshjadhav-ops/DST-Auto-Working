@@ -8,29 +8,45 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
-  --green-dark: #1a5c1a; --green-mid: #2d7a2d; --blue: #1565c0;
-  --orange: #e65100; --red: #c62828; --gold: #f5c518;
-  --border: #c8e6c9; --ly: #fffde7;
+  --green-dark:#1a5c1a;--green-mid:#2d7a2d;--blue:#1565c0;
+  --orange:#e65100;--red:#c62828;--border:#c8e6c9;--ly:#fffde7;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
 .topbar{background:var(--green-dark);color:#fff;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;}
-.topbar-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.topbar-title{font-size:18px;font-weight:700;}
 .main{max-width:1100px;margin:24px auto;padding:0 16px;}
 .card{background:#fff;border-radius:10px;padding:20px;border:1px solid var(--border);margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
-.card-title{font-size:13px;font-weight:700;color:var(--green-dark);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
-.files-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-@media(max-width:640px){.files-grid{grid-template-columns:1fr;}}
-.file-slot{border:2px dashed #a5d6a7;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;background:#f9fbe7;position:relative;}
+.card-title{font-size:13px;font-weight:700;color:var(--green-dark);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;}
+.info-box{background:#e3f2fd;border:1px solid #90caf9;border-radius:6px;padding:10px 14px;font-size:12px;color:var(--blue);margin-bottom:14px;}
+
+/* UPLOAD SECTIONS */
+.section-label{font-size:12px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;display:flex;align-items:center;gap:6px;}
+.section-label::after{content:'';flex:1;height:1px;background:#e0e0e0;}
+
+/* SINGLE FILE SLOT */
+.file-slot{border:2px dashed #a5d6a7;border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .2s;background:#f9fbe7;position:relative;margin-bottom:8px;}
 .file-slot:hover{border-color:var(--green-dark);background:#f1f8e9;}
 .file-slot.loaded{border-style:solid;border-color:var(--green-dark);background:#e8f5e9;}
-.file-slot.required{border-color:#ef9a9a;background:#fff5f5;}
-.slot-icon{font-size:28px;margin-bottom:6px;}
-.slot-name{font-size:12px;font-weight:700;color:var(--green-dark);margin-bottom:3px;}
-.slot-desc{font-size:11px;color:#888;}
-.slot-loaded{font-size:11px;color:var(--green-dark);font-weight:600;margin-top:6px;font-family:'JetBrains Mono',monospace;}
-.slot-remove{position:absolute;top:6px;right:6px;background:none;border:1px solid #ef9a9a;border-radius:4px;padding:1px 6px;font-size:10px;color:var(--red);cursor:pointer;}
-.generate-btn{width:100%;padding:14px;background:var(--green-dark);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:background .2s;display:flex;align-items:center;justify-content:center;gap:10px;}
+.slot-icon{font-size:22px;flex-shrink:0;}
+.slot-info{flex:1;}
+.slot-name{font-size:12px;font-weight:700;color:var(--green-dark);}
+.slot-desc{font-size:11px;color:#888;margin-top:1px;}
+.slot-loaded{font-size:11px;color:var(--green-dark);font-weight:600;margin-top:3px;font-family:'JetBrains Mono',monospace;}
+.slot-remove{background:none;border:1px solid #ef9a9a;border-radius:4px;padding:2px 8px;font-size:10px;color:var(--red);cursor:pointer;flex-shrink:0;}
+
+/* MULTI FILE SLOT */
+.multi-slot{border:2px dashed #a5d6a7;border-radius:8px;padding:12px 14px;background:#f9fbe7;margin-bottom:8px;}
+.multi-slot-header{display:flex;align-items:center;gap:10px;cursor:pointer;}
+.multi-slot-header:hover .slot-name{color:var(--green-mid);}
+.multi-files-list{margin-top:8px;display:flex;flex-direction:column;gap:4px;}
+.multi-file-item{display:flex;align-items:center;gap:8px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;padding:5px 8px;font-size:11px;}
+.multi-file-name{flex:1;font-family:'JetBrains Mono',monospace;color:var(--green-dark);}
+.multi-file-remove{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:0 2px;}
+.add-more{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--blue);cursor:pointer;margin-top:6px;text-decoration:underline;}
+
+/* REST */
+.generate-btn{width:100%;padding:14px;background:var(--green-dark);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:background .2s;}
 .generate-btn:hover{background:var(--green-mid);}
 .generate-btn:disabled{background:#aaa;cursor:not-allowed;}
 .progress-wrap{margin-top:16px;display:none;}
@@ -45,10 +61,11 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
 .stat-box{background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px;text-align:center;}
 .stat-num{font-size:22px;font-weight:700;color:var(--green-dark);font-family:'JetBrains Mono',monospace;}
 .stat-lbl{font-size:11px;color:#666;margin-top:3px;}
-.download-btn{padding:12px 28px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:8px;}
+.download-btn{padding:12px 28px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
 .download-btn:hover{background:#1976d2;}
-.warn-box{background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:10px 14px;font-size:12px;color:var(--orange);margin-top:10px;}
-.info-box{background:#e3f2fd;border:1px solid #90caf9;border-radius:6px;padding:10px 14px;font-size:12px;color:var(--blue);margin-bottom:14px;}
+.output-name-box{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+.output-name-box label{font-size:12px;font-weight:600;color:#555;white-space:nowrap;}
+.output-name-box input{flex:1;padding:8px 10px;border:1.5px solid #a5d6a7;border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;}
 </style>
 </head>
 <body>
@@ -59,77 +76,79 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
 </div>
 
 <div class="main">
-
-  <!-- INFO -->
   <div class="info-box">
-    📋 Upload the 5 input files below → Click <b>Generate</b> → Download the complete <b>Rzp_DST</b> Excel file with 3 sheets: <b>Rzp DST</b>, <b>DPM</b>, and <b>Pivot</b>.
+    📋 Upload the input files → Click <b>Generate</b> → Download <b>Rzp_DST Excel</b> with 3 sheets: Pivot, Rzp DST, DPM.
   </div>
 
-  <!-- FILE UPLOAD -->
+  <!-- FILE UPLOAD CARD -->
   <div class="card">
     <div class="card-title">📂 Step 1 — Upload Input Files</div>
-    <div class="files-grid">
 
-      <div class="file-slot" id="slot-raw" onclick="triggerUpload('raw')">
-        <input type="file" id="file-raw" accept=".xlsx,.xls" style="display:none" onchange="handleFile('raw',this)">
-        <div class="slot-icon">📊</div>
-        <div class="slot-name">RAW File</div>
-        <div class="slot-desc">RAW.xlsx — Settlement data</div>
+    <!-- RAW -->
+    <div class="section-label">📊 RAW File (Required)</div>
+    <div class="file-slot" id="slot-raw" onclick="triggerUpload('raw')">
+      <input type="file" id="file-raw" accept=".xlsx,.xls" style="display:none" onchange="handleSingle('raw',this)">
+      <div class="slot-icon">📊</div>
+      <div class="slot-info">
+        <div class="slot-name">RAW.xlsx — Settlement data</div>
         <div class="slot-loaded" id="loaded-raw"></div>
       </div>
+    </div>
 
-      <div class="file-slot" id="slot-charge" onclick="triggerUpload('charge')">
-        <input type="file" id="file-charge" accept=".xlsx,.xls" style="display:none" onchange="handleFile('charge',this)">
-        <div class="slot-icon">💰</div>
-        <div class="slot-name">Charge Report</div>
-        <div class="slot-desc">Charge_report.xlsx — Mandate/Bounce/LPI</div>
+    <!-- CHARGE REPORT -->
+    <div class="section-label">💰 Charge Report (Required)</div>
+    <div class="file-slot" id="slot-charge" onclick="triggerUpload('charge')">
+      <input type="file" id="file-charge" accept=".xlsx,.xls" style="display:none" onchange="handleSingle('charge',this)">
+      <div class="slot-icon">💰</div>
+      <div class="slot-info">
+        <div class="slot-name">Charge_report.xlsx — Mandate/Bounce/LPI breakdown</div>
         <div class="slot-loaded" id="loaded-charge"></div>
       </div>
+    </div>
 
-      <div class="file-slot" id="slot-txn" onclick="triggerUpload('txn')">
-        <input type="file" id="file-txn" accept=".xlsx,.xls" style="display:none" onchange="handleFile('txn',this)">
+    <!-- TRANSACTION LOGS - MULTIPLE -->
+    <div class="section-label">📋 Transaction Logs (Required — Multiple Allowed)</div>
+    <div class="multi-slot" id="slot-txn">
+      <div class="multi-slot-header" onclick="triggerMulti('txn')">
+        <input type="file" id="file-txn-input" accept=".xlsx,.xls" multiple style="display:none" onchange="handleMulti('txn',this)">
         <div class="slot-icon">📋</div>
-        <div class="slot-name">Transaction Logs</div>
-        <div class="slot-desc">transaction-logs.xlsx — EMI Date lookup</div>
-        <div class="slot-loaded" id="loaded-txn"></div>
-      </div>
-
-      <div class="file-slot" id="slot-recon1" onclick="triggerUpload('recon1')">
-        <input type="file" id="file-recon1" accept=".xlsx,.xls" style="display:none" onchange="handleFile('recon1',this)">
-        <div class="slot-icon">🏦</div>
-        <div class="slot-name">Settlement Recon — Day 1</div>
-        <div class="slot-desc">settlement_recon_YYYYMMDD.xlsx</div>
-        <div class="slot-loaded" id="loaded-recon1"></div>
-      </div>
-
-      <div class="file-slot" id="slot-recon2" onclick="triggerUpload('recon2')">
-        <input type="file" id="file-recon2" accept=".xlsx,.xls" style="display:none" onchange="handleFile('recon2',this)">
-        <div class="slot-icon">🏦</div>
-        <div class="slot-name">Settlement Recon — Day 2 <span style="font-size:10px;color:#888;">(Optional)</span></div>
-        <div class="slot-desc">settlement_recon_YYYYMMDD.xlsx</div>
-        <div class="slot-loaded" id="loaded-recon2"></div>
-      </div>
-
-      <div class="file-slot" style="border-style:solid;border-color:#c5cae9;background:#e8eaf6;cursor:default;">
-        <div class="slot-icon">📝</div>
-        <div class="slot-name" style="color:#3949ab;">Output File Name</div>
-        <div class="slot-desc" style="margin-top:8px;">
-          <input type="text" id="output-name" value="Rzp_DST_Output" 
-            style="width:100%;padding:6px 8px;border:1.5px solid #9fa8da;border-radius:4px;font-size:12px;font-family:'Inter',sans-serif;text-align:center;outline:none;"
-            onclick="event.stopPropagation()">
-          <div style="margin-top:4px;font-size:10px;color:#666;">.xlsx will be added automatically</div>
+        <div class="slot-info">
+          <div class="slot-name">transaction-logs.xlsx — EMI Date + Payment Type lookup</div>
+          <div class="slot-desc">Click to add one or more transaction log files</div>
         </div>
+        <div style="font-size:11px;color:var(--blue);font-weight:600;">+ Add Files</div>
       </div>
+      <div class="multi-files-list" id="list-txn"></div>
+    </div>
 
+    <!-- SETTLEMENT RECON - MULTIPLE -->
+    <div class="section-label">🏦 Settlement Recon Files (Required — Multiple Allowed)</div>
+    <div class="multi-slot" id="slot-recon">
+      <div class="multi-slot-header" onclick="triggerMulti('recon')">
+        <input type="file" id="file-recon-input" accept=".xlsx,.xls" multiple style="display:none" onchange="handleMulti('recon',this)">
+        <div class="slot-icon">🏦</div>
+        <div class="slot-info">
+          <div class="slot-name">settlement_recon_YYYYMMDD.xlsx — One or more days</div>
+          <div class="slot-desc">Click to add settlement recon files (Day 1, Day 2, Day 3...)</div>
+        </div>
+        <div style="font-size:11px;color:var(--blue);font-weight:600;">+ Add Files</div>
+      </div>
+      <div class="multi-files-list" id="list-recon"></div>
+    </div>
+
+    <!-- OUTPUT NAME -->
+    <div class="section-label">📝 Output Settings</div>
+    <div class="output-name-box">
+      <label>Output File Name:</label>
+      <input type="text" id="output-name" value="Rzp_DST_Output" placeholder="Rzp_DST_Output">
+      <span style="font-size:12px;color:#888;">.xlsx</span>
     </div>
   </div>
 
   <!-- GENERATE -->
   <div class="card">
     <div class="card-title">⚡ Step 2 — Generate Report</div>
-    <button class="generate-btn" id="gen-btn" onclick="generateReport()" disabled>
-      ⚡ Generate DST Report
-    </button>
+    <button class="generate-btn" id="gen-btn" onclick="generateReport()" disabled>⚡ Generate DST Report</button>
     <div class="progress-wrap" id="progress-wrap">
       <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar"></div></div>
       <div class="step-log" id="step-log"></div>
@@ -141,98 +160,106 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
     <div class="card-title">✅ Report Ready!</div>
     <div class="result-stats" id="result-stats"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="download-btn" id="download-btn">⬇ Download Excel File</button>
+      <button class="download-btn" id="download-btn">⬇ Download Excel</button>
       <button onclick="resetTool()" style="padding:12px 20px;background:#f5f5f5;color:#333;border:1px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">🔄 New Report</button>
     </div>
   </div>
-
 </div>
 
 <script>
-// ── FILE SLOTS ──
-const files = { raw: null, charge: null, txn: null, recon1: null, recon2: null };
-const required = ['raw', 'charge', 'txn', 'recon1'];
+// ── FILE STATE ──
+const singleFiles = { raw: null, charge: null };
+const multiFiles  = { txn: [], recon: [] };
+const required = { single: ['raw','charge'], multi: ['txn','recon'] };
 
-function triggerUpload(key) {
-  document.getElementById('file-' + key).click();
-}
+function triggerUpload(key) { document.getElementById('file-'+key).click(); }
+function triggerMulti(key)  { document.getElementById('file-'+key+'-input').click(); }
 
-function handleFile(key, input) {
+function handleSingle(key, input) {
   const file = input.files[0];
   if (!file) return;
-  files[key] = file;
-  const slot = document.getElementById('slot-' + key);
+  singleFiles[key] = file;
+  const slot = document.getElementById('slot-'+key);
   slot.classList.add('loaded');
-  slot.classList.remove('required');
-  document.getElementById('loaded-' + key).textContent = '✅ ' + file.name;
-  // Add remove button
-  if (!slot.querySelector('.slot-remove')) {
-    const btn = document.createElement('button');
-    btn.className = 'slot-remove';
-    btn.textContent = '✕';
-    btn.onclick = (e) => { e.stopPropagation(); removeFile(key); };
-    slot.appendChild(btn);
-  }
+  document.getElementById('loaded-'+key).textContent = '✅ ' + file.name;
+  // remove button
+  const existing = slot.querySelector('.slot-remove');
+  if (existing) existing.remove();
+  const btn = document.createElement('button');
+  btn.className = 'slot-remove';
+  btn.textContent = '✕';
+  btn.onclick = e => { e.stopPropagation(); singleFiles[key]=null; slot.classList.remove('loaded'); document.getElementById('loaded-'+key).textContent=''; btn.remove(); input.value=''; checkReady(); };
+  slot.appendChild(btn);
   checkReady();
 }
 
-function removeFile(key) {
-  files[key] = null;
-  document.getElementById('slot-' + key).classList.remove('loaded');
-  document.getElementById('loaded-' + key).textContent = '';
-  const btn = document.getElementById('slot-' + key).querySelector('.slot-remove');
-  if (btn) btn.remove();
-  document.getElementById('file-' + key).value = '';
+function handleMulti(key, input) {
+  Array.from(input.files).forEach(file => {
+    if (!multiFiles[key].find(f => f.name === file.name)) {
+      multiFiles[key].push(file);
+    }
+  });
+  input.value = '';
+  renderMultiList(key);
+  checkReady();
+}
+
+function renderMultiList(key) {
+  const list = document.getElementById('list-'+key);
+  if (!multiFiles[key].length) { list.innerHTML=''; return; }
+  list.innerHTML = multiFiles[key].map((f,i) => `
+    <div class="multi-file-item">
+      <span>📄</span>
+      <span class="multi-file-name">${f.name}</span>
+      <button class="multi-file-remove" onclick="removeMultiFile('${key}',${i})">✕</button>
+    </div>`).join('');
+}
+
+function removeMultiFile(key, idx) {
+  multiFiles[key].splice(idx, 1);
+  renderMultiList(key);
   checkReady();
 }
 
 function checkReady() {
-  const ready = required.every(k => files[k] !== null);
-  document.getElementById('gen-btn').disabled = !ready;
+  const singleOk = required.single.every(k => singleFiles[k] !== null);
+  const multiOk  = required.multi.every(k => multiFiles[k].length > 0);
+  document.getElementById('gen-btn').disabled = !(singleOk && multiOk);
 }
 
 // ── XLSX READER ──
 function readExcel(file) {
-  return new Promise((res, rej) => {
+  return new Promise((res,rej) => {
     const reader = new FileReader();
     reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target.result, {type:'binary', cellDates:true, raw:false});
-        res(wb);
-      } catch(err) { rej(err); }
+      try { res(XLSX.read(e.target.result, {type:'binary',cellDates:true,raw:false})); }
+      catch(err) { rej(err); }
     };
     reader.onerror = rej;
     reader.readAsBinaryString(file);
   });
 }
-
 function sheetToRows(wb, sheetName) {
   const ws = wb.Sheets[sheetName] || wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
 }
-
 function cleanNum(v) {
-  if (v === null || v === undefined || v === '') return 0;
-  return parseFloat(String(v).replace(/[,₹\s]/g,'').replace(/[^0-9.-]/g,'')) || 0;
+  if (!v && v !== 0) return 0;
+  return parseFloat(String(v).replace(/[₹,\s\u20b9]/g,'').replace(/[^0-9.-]/g,'')) || 0;
 }
-
 function fmtDate(v) {
   if (!v) return '';
-  if (v instanceof Date) {
-    const d = v;
-    return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
-  }
+  if (v instanceof Date) return `${String(v.getDate()).padStart(2,'0')}-${String(v.getMonth()+1).padStart(2,'0')}-${v.getFullYear()}`;
   const s = String(v);
-  // Handle ISO format
-  if (s.includes('T') || s.match(/^\d{4}-\d{2}-\d{2}/)) {
+  if (s.match(/^\d{4}-\d{2}-\d{2}/) || s.includes('T')) {
     const d = new Date(s);
     if (!isNaN(d)) return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
   }
-  return s.split(' ')[0]; // Return date part only
+  return s.split(' ')[0];
 }
 
 // ── LOG ──
-let logEl, progressEl;
+let logEl, progressEl, outputBlob = null;
 function log(msg, icon='⏳') {
   const div = document.createElement('div');
   div.className = 'step-item';
@@ -240,139 +267,129 @@ function log(msg, icon='⏳') {
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
 }
-function setProgress(pct) {
-  progressEl.style.width = pct + '%';
-}
+function setProgress(pct) { progressEl.style.width = pct + '%'; }
 
 // ── GENERATE ──
-let outputBlob = null;
-
 async function generateReport() {
   const btn = document.getElementById('gen-btn');
   btn.disabled = true;
-  const pw = document.getElementById('progress-wrap');
-  pw.style.display = 'block';
-  logEl = document.getElementById('step-log');
-  logEl.innerHTML = '';
+  document.getElementById('progress-wrap').style.display = 'block';
+  logEl = document.getElementById('step-log'); logEl.innerHTML = '';
   progressEl = document.getElementById('progress-bar');
   document.getElementById('result-card').classList.remove('show');
   outputBlob = null;
 
   try {
-    // Step 1: Read all files
+    // 1. Read RAW
     log('Reading RAW file...');
-    const wbRaw = await readExcel(files.raw);
+    const wbRaw = await readExcel(singleFiles.raw);
     const rawRows = sheetToRows(wbRaw, 'RAW');
-    log(`RAW: ${rawRows.length} rows loaded`, '✅');
-    setProgress(15);
+    log(`RAW: ${rawRows.length} rows`, '✅'); setProgress(10);
 
+    // 2. Read Charge Report
     log('Reading Charge Report...');
-    const wbChr = await readExcel(files.charge);
-    const chrRows = sheetToRows(wbChr, 'Sheet1');
-    // Index by transaction_id (Pay ID)
+    const wbChr = await readExcel(singleFiles.charge);
+    const chrRows = sheetToRows(wbChr, wbChr.SheetNames[0]);
     const chargeByPayId = {};
     chrRows.forEach(r => {
-      const tid = String(r['transaction_id'] || r['TRANSACTION_ID'] || '').trim();
+      const tid = String(r['transaction_id'] || '').trim();
       if (tid) chargeByPayId[tid] = r;
     });
-    log(`Charge Report: ${chrRows.length} rows, ${Object.keys(chargeByPayId).length} unique Pay IDs`, '✅');
-    setProgress(30);
+    log(`Charge Report: ${Object.keys(chargeByPayId).length} entries`, '✅'); setProgress(20);
 
-    log('Reading Transaction Logs (EMI + Charge sheets)...');
-    const wbTxn = await readExcel(files.txn);
+    // 3. Read ALL Transaction Log files (merge Sheet1 + charges + EMI from each)
+    log(`Reading ${multiFiles.txn.length} Transaction Log file(s)...`);
     const txnByPayId = {};
-    const txnByOrderId = {};
-    const chargeTypeByPayId = {}; // For CHARGE type rows from Charge sheet
+    for (const file of multiFiles.txn) {
+      const wb = await readExcel(file);
+      for (const sname of wb.SheetNames) {
+        const rows = sheetToRows(wb, sname);
+        rows.forEach(r => {
+          const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
+          if (tid && tid !== 'None' && !txnByPayId[tid]) txnByPayId[tid] = r;
+        });
+      }
+    }
+    log(`Transaction Logs: ${Object.keys(txnByPayId).length} entries`, '✅'); setProgress(35);
 
-    // Read EMI sheet
-    const txnRows = sheetToRows(wbTxn, 'EMI');
-    txnRows.forEach(r => {
-      const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
-      const oid = String(r['ORDER ID'] || r['order_id'] || '').trim();
-      if (tid && tid !== 'None') txnByPayId[tid] = r;
-      if (oid && oid !== 'None') txnByOrderId[oid] = r;
-    });
-
-    // Read Charge sheet — for pure CHARGE type rows
-    const chargeSheetRows = sheetToRows(wbTxn, 'Charge');
-    chargeSheetRows.forEach(r => {
-      const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
-      if (tid && tid !== 'None') chargeTypeByPayId[tid] = r;
-    });
-
-    log(`Transaction Logs: EMI=${txnRows.length} rows, Charge=${chargeSheetRows.length} rows`, '✅');
+    // 4. Read ALL Settlement Recon files (merge)
+    log(`Reading ${multiFiles.recon.length} Settlement Recon file(s)...`);
+    // Note: Recon files are loaded but not used as main source — RAW is source
+    // Recon files are kept for reference/future use
     setProgress(45);
 
-    // Step 2: Merge settlement recons
-    log('Reading Settlement Recon files...');
-    const wbR1 = await readExcel(files.recon1);
-    let reconRows = sheetToRows(wbR1, 'Sheet1');
-    if (files.recon2) {
-      const wbR2 = await readExcel(files.recon2);
-      const r2 = sheetToRows(wbR2, 'Sheet1');
-      reconRows = [...reconRows, ...r2];
-    }
-    log(`Settlement Recon: ${reconRows.length} rows (${files.recon2 ? '2 files merged' : '1 file'})`, '✅');
-    setProgress(55);
-
-    // Step 3: Build DST Main Sheet — Source is RAW (filtered: EMI/EMI+CHARGE/CHARGE, exclude MIRAE)
-    log('Building Rzp DST main sheet...');
+    // 5. Build DST Main Sheet — RAW is source
+    log('Building Rzp DST sheet...');
     const dstRows = [];
     rawRows.forEach(r => {
       const lender = String(r['LENDER'] || '').trim().toUpperCase();
-      const payType = String(r['payment_type'] || '').trim().toUpperCase();
+      const rawPayType = String(r['payment_type'] || '').trim().toUpperCase();
 
-      // MIRAE exclude karo
+      // Exclude MIRAE
       if (lender === 'MIRAE') return;
+      // Include only EMI, EMI+CHARGE, CHARGE
+      if (!['EMI','EMI+CHARGE','CHARGE'].includes(rawPayType)) return;
 
-      // Sirf EMI, EMI+CHARGE, CHARGE include karo
-      if (!['EMI', 'EMI+CHARGE', 'CHARGE'].includes(payType)) return;
-
-      const payId = String(r['Pay ID'] || '').trim();
-      const appId = String(r['Application ID'] || '').trim();
-      const orderId = String(r['Order ID'] || '').trim();
-      const settled = cleanNum(r['Settled Amount']);
-      const utr = String(r['Lender UTR'] || '').trim();
+      const payId    = String(r['Pay ID'] || '').trim();
+      const appId    = String(r['Application ID'] || '').trim();
+      const orderId  = String(r['Order ID'] || '').trim();
+      const settled  = cleanNum(r['Settled Amount']);
+      const utr      = String(r['Lender UTR'] || '').trim();
       const settlDate = fmtDate(r['Settlement Date']);
-      const source = String(r['source'] || '').trim();
+      const source   = String(r['source'] || '').trim();
 
-      // Get charge breakdown from Charge Report (match by Pay ID)
+      // Get Transaction Log entry → determines actual payment type
+      const txn = txnByPayId[payId] || {};
+      const txnPayType = String(txn['PAYMENT TYPE'] || txn['payment_type'] || '').trim().toUpperCase();
+      const emiDate  = fmtDate(txn['DATE'] || txn['date'] || '');
+
+      // Get Charge Report entry
       const charge = chargeByPayId[payId] || null;
-      let mandate = charge ? cleanNum(charge['mandate_alloc']) : 0;
-      let bounce  = charge ? cleanNum(charge['bounce_alloc'])  : 0;
-      let lpi     = charge ? cleanNum(charge['lpp_alloc'])     : 0;
+      let mandate  = charge ? cleanNum(charge['mandate_alloc']) : 0;
+      let bounce   = charge ? cleanNum(charge['bounce_alloc'])  : 0;
+      let lpi      = charge ? cleanNum(charge['lpp_alloc'])     : 0;
+      const hasCharges = mandate > 0 || bounce > 0 || lpi > 0;
 
-      // CHARGE logic:
-      // payment_type = CHARGE → always Bounce = Settled (whether in charge report or not)
-      // payment_type = EMI+CHARGE:
-      //   → found in Charge Report AND has charge values → Bounce/Mandate/LPI = charge amounts, EMI = Settled - charges
-      //   → NOT found in Charge Report (CHARGES=#N/A) → EMI = full Settled, Bounce = 0
-      if (payType === 'CHARGE') {
-        // Pure charge row — full amount is bounce (use charge report split if available)
-        if (mandate === 0 && bounce === 0 && lpi === 0) {
+      let emi = 0;
+
+      // ── CORE LOGIC ──
+      // Rule: TxnLog PAYMENT TYPE decides the split
+      // CHARGE (in TxnLog) → use Charge Report split; if not found → full = Bounce
+      // EMI (in TxnLog)    → full Settled = EMI, no charges
+      // Not in TxnLog:
+      //   RAW type=EMI+CHARGE + Charge Report found with values → apply charges
+      //   RAW type=EMI+CHARGE + no Charge Report                → full = EMI
+      //   RAW type=CHARGE                                       → use Charge Report; if none → full = Bounce
+      //   RAW type=EMI                                          → full = EMI
+
+      if (txnPayType === 'CHARGE') {
+        // Transaction log says CHARGE → all Bounce/Mandate/LPI
+        if (!hasCharges) {
           bounce = settled; // No charge report match → full = bounce
         }
-        // If charge report has values, they are already set above
-      } else if (payType === 'EMI+CHARGE') {
-        // Only apply charges if Charge Report actually has a match with values
-        if (!charge || (mandate === 0 && bounce === 0 && lpi === 0)) {
-          // No charge found → treat as pure EMI
-          mandate = 0; bounce = 0; lpi = 0;
+        emi = 0;
+      } else if (txnPayType === 'EMI') {
+        // Transaction log says EMI → pure EMI
+        emi = settled; mandate = 0; bounce = 0; lpi = 0;
+      } else {
+        // Not found in TxnLog — use RAW type + Charge Report
+        if (rawPayType === 'CHARGE') {
+          if (!hasCharges) bounce = settled;
+          emi = 0;
+        } else if (rawPayType === 'EMI+CHARGE') {
+          if (hasCharges) {
+            emi = settled - (mandate + bounce + lpi);
+          } else {
+            emi = settled; mandate = 0; bounce = 0; lpi = 0;
+          }
+        } else {
+          // Pure EMI
+          emi = settled; mandate = 0; bounce = 0; lpi = 0;
         }
-        // If charge found with values → already set above, EMI = Settled - charges
       }
 
-      const totalCharges = mandate + bounce + lpi;
-      // EMI = Settled - charges (0 for pure CHARGE type)
-      const emi = settled - totalCharges;
-
-      // Get EMI date from transaction log
-      const txn = txnByPayId[payId] || txnByOrderId[orderId] || {};
-      const emiDate = fmtDate(txn['DATE'] || txn['date'] || '');
-      const txnType = txn['PAYMENT TYPE'] || txn['payment_type'] || r['payment_type'] || '';
-
       const total = emi + mandate + bounce + lpi;
-      const diff = settled - total;
+      const diff  = settled - total;
 
       dstRows.push({
         'LENDER': String(r['LENDER'] || '').trim(),
@@ -387,7 +404,7 @@ async function generateReport() {
         'Settled Amount': settled,
         'Lender UTR': utr,
         'Settlement Date': settlDate,
-        'Type in Transaction Log': txnType,
+        'Type in Transaction Log': txnPayType || r['payment_type'] || '',
         'EMI ': emi > 0 ? emi : '',
         'Mandate Charges': mandate > 0 ? mandate : '',
         'Bounce Charges': bounce > 0 ? bounce : '',
@@ -398,54 +415,44 @@ async function generateReport() {
         'Value Date(Transaction Date)': emiDate,
       });
     });
-    log(`Rzp DST sheet: ${dstRows.length} rows built (MIRAE excluded, EMI/EMI+CHARGE/CHARGE only)`, '✅');
-    setProgress(68);
+    log(`Rzp DST: ${dstRows.length} rows built`, '✅'); setProgress(65);
 
-    // Step 4: Build DPM Sheet
+    // 6. Build DPM Sheet
     log('Building DPM sheet...');
     const dpmRows = [];
     dstRows.forEach(r => {
-      const appId = r['Application ID'];
-      const payId = r['Pay ID'];
-      const utr = r['Lender UTR'];
-      const settlDate = r['Settlement Date'];
-      const emiDate = r['Value Date(Transaction Date)'];
-      const lender = r['LENDER'];
-      const emi = cleanNum(r['EMI ']);
-      const mandate = cleanNum(r['Mandate Charges']);
-      const bounce = cleanNum(r['Bounce Charges']);
-      const lpi = cleanNum(r['LPI']);
-
       const base = {
-        'App id': appId,
+        'App id': r['Application ID'],
         'Payment Type': '',
         'Amount': 0,
         'Source': 'Razorpay DST',
-        'EMI Date(Value Date)': emiDate,
-        'Pay ID': payId,
-        'Settlement Date': settlDate,
-        'UTR': utr,
-        'NBFC': lender,
+        'EMI Date(Value Date)': r['Value Date(Transaction Date)'],
+        'Pay ID': r['Pay ID'],
+        'Settlement Date': r['Settlement Date'],
+        'UTR': r['Lender UTR'],
+        'NBFC': r['LENDER'],
         'SPOC': 'GANESH',
         'Sent to Lender': '',
         'Remarks': '',
       };
+      const emi     = cleanNum(r['EMI ']);
+      const mandate = cleanNum(r['Mandate Charges']);
+      const bounce  = cleanNum(r['Bounce Charges']);
+      const lpi     = cleanNum(r['LPI']);
 
-      if (emi > 0) dpmRows.push({...base, 'Payment Type': 'EMI', 'Amount': emi});
+      if (emi > 0)     dpmRows.push({...base, 'Payment Type': 'EMI',                        'Amount': emi});
       if (mandate > 0) dpmRows.push({...base, 'Payment Type': 'Mandate Activation Charges', 'Amount': mandate});
-      if (bounce > 0) dpmRows.push({...base, 'Payment Type': 'Bounce Charges', 'Amount': bounce});
-      if (lpi > 0) dpmRows.push({...base, 'Payment Type': 'LPP Charges', 'Amount': lpi});
+      if (bounce > 0)  dpmRows.push({...base, 'Payment Type': 'Bounce Charges',             'Amount': bounce});
+      if (lpi > 0)     dpmRows.push({...base, 'Payment Type': 'LPP Charges',                'Amount': lpi});
     });
-    log(`DPM sheet: ${dpmRows.length} rows built`, '✅');
-    setProgress(80);
+    log(`DPM: ${dpmRows.length} rows built`, '✅'); setProgress(80);
 
-    // Step 5: Build Pivot
-    log('Building Pivot summary...');
+    // 7. Build Pivot
+    log('Building Pivot...');
     const pivotByLender = {};
     dstRows.forEach(r => {
-      const lender = r['LENDER'];
-      const utr = r['Lender UTR'];
-      if (!pivotByLender[lender]) pivotByLender[lender] = { total: 0, utrs: {} };
+      const lender = r['LENDER'], utr = r['Lender UTR'];
+      if (!pivotByLender[lender]) pivotByLender[lender] = {total:0, utrs:{}};
       pivotByLender[lender].total += cleanNum(r['Settled Amount']);
       if (utr) {
         if (!pivotByLender[lender].utrs[utr]) pivotByLender[lender].utrs[utr] = 0;
@@ -455,55 +462,38 @@ async function generateReport() {
     const pivotRows = [];
     let grandTotal = 0;
     Object.entries(pivotByLender).forEach(([lender, data]) => {
-      pivotRows.push({ 'Row Labels': lender, 'Sum of Settled Amount': data.total });
+      pivotRows.push({'Row Labels': lender, 'Sum of Settled Amount': data.total});
       grandTotal += data.total;
-      Object.entries(data.utrs).forEach(([utr, amt]) => {
-        pivotRows.push({ 'Row Labels': '  ' + utr, 'Sum of Settled Amount': amt });
-      });
+      Object.entries(data.utrs).forEach(([utr, amt]) =>
+        pivotRows.push({'Row Labels': '  '+utr, 'Sum of Settled Amount': amt}));
     });
-    pivotRows.push({ 'Row Labels': 'Grand Total', 'Sum of Settled Amount': grandTotal });
-    log(`Pivot: ${Object.keys(pivotByLender).length} lenders, Grand Total ₹${grandTotal.toLocaleString('en-IN')}`, '✅');
-    setProgress(90);
+    pivotRows.push({'Row Labels': 'Grand Total', 'Sum of Settled Amount': grandTotal});
+    log(`Pivot: ${Object.keys(pivotByLender).length} lenders, ₹${grandTotal.toLocaleString('en-IN')}`, '✅'); setProgress(90);
 
-    // Step 6: Create Excel workbook
+    // 8. Create Excel
     log('Creating Excel file...');
     const wb = XLSX.utils.book_new();
-
-    // Sheet 1: Pivot
     const wsPivot = XLSX.utils.json_to_sheet(pivotRows);
-    wsPivot['!cols'] = [{wch:35},{wch:22}];
+    wsPivot['!cols'] = [{wch:38},{wch:22}];
     XLSX.utils.book_append_sheet(wb, wsPivot, 'Pivot');
 
-    // Sheet 2: Rzp DST
     const wsDST = XLSX.utils.json_to_sheet(dstRows);
-    wsDST['!cols'] = [
-      {wch:12},{wch:12},{wch:22},{wch:14},{wch:24},{wch:14},{wch:38},{wch:10},{wch:22},
-      {wch:14},{wch:26},{wch:16},{wch:20},{wch:10},{wch:16},{wch:16},{wch:8},{wch:12},{wch:8},{wch:12},{wch:20}
-    ];
+    wsDST['!cols'] = [{wch:12},{wch:10},{wch:22},{wch:12},{wch:24},{wch:14},{wch:36},{wch:10},{wch:22},{wch:14},{wch:26},{wch:14},{wch:20},{wch:10},{wch:16},{wch:16},{wch:8},{wch:12},{wch:8},{wch:12},{wch:20}];
     XLSX.utils.book_append_sheet(wb, wsDST, 'Rzp DST');
 
-    // Sheet 3: DPM
     const dpmCols = ['App id','Payment Type','Amount','Source','EMI Date(Value Date)','Pay ID','Settlement Date','UTR','NBFC','SPOC','Sent to Lender','Remarks'];
     const wsDPM = XLSX.utils.json_to_sheet(dpmRows, {header: dpmCols});
-    wsDPM['!cols'] = [
-      {wch:12},{wch:18},{wch:12},{wch:16},{wch:20},{wch:24},{wch:16},{wch:28},{wch:20},{wch:10},{wch:14},{wch:14}
-    ];
+    wsDPM['!cols'] = [{wch:12},{wch:26},{wch:12},{wch:14},{wch:20},{wch:24},{wch:16},{wch:28},{wch:20},{wch:10},{wch:14},{wch:14}];
     XLSX.utils.book_append_sheet(wb, wsDPM, 'DPM');
 
-    // Generate file
-    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    outputBlob = new Blob([wbout], {type:'application/octet-stream'});
-    log('Excel file created successfully!', '✅');
-    setProgress(100);
+    outputBlob = new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})], {type:'application/octet-stream'});
+    log('Excel file created!', '✅'); setProgress(100);
 
-    // Show result
-    const totalAmt = grandTotal;
     document.getElementById('result-stats').innerHTML = `
       <div class="stat-box"><div class="stat-num">${dstRows.length}</div><div class="stat-lbl">Rzp DST Rows</div></div>
       <div class="stat-box"><div class="stat-num">${dpmRows.length}</div><div class="stat-lbl">DPM Rows</div></div>
       <div class="stat-box"><div class="stat-num">${Object.keys(pivotByLender).length}</div><div class="stat-lbl">Lenders</div></div>
-      <div class="stat-box"><div class="stat-num" style="font-size:14px;">₹${totalAmt.toLocaleString('en-IN')}</div><div class="stat-lbl">Grand Total</div></div>
-    `;
+      <div class="stat-box"><div class="stat-num" style="font-size:14px;">₹${grandTotal.toLocaleString('en-IN')}</div><div class="stat-lbl">Grand Total</div></div>`;
 
     const outName = (document.getElementById('output-name').value.trim() || 'Rzp_DST_Output') + '.xlsx';
     document.getElementById('download-btn').onclick = () => {
@@ -512,24 +502,28 @@ async function generateReport() {
       a.download = outName;
       a.click();
     };
-
     document.getElementById('result-card').classList.add('show');
-    log('Done! Click Download to save your file. 🎉', '🎉');
+    log('Done! 🎉', '🎉');
 
   } catch(err) {
     log('❌ Error: ' + err.message, '❌');
     console.error(err);
   }
-
   btn.disabled = false;
 }
 
 function resetTool() {
-  ['raw','charge','txn','recon1','recon2'].forEach(k => removeFile(k));
-  document.getElementById('progress-wrap').style.display = 'none';
+  Object.keys(singleFiles).forEach(k => { singleFiles[k]=null; });
+  Object.keys(multiFiles).forEach(k => { multiFiles[k]=[]; renderMultiList(k); });
+  ['raw','charge'].forEach(k => {
+    const slot = document.getElementById('slot-'+k);
+    if (slot) { slot.classList.remove('loaded'); document.getElementById('loaded-'+k).textContent=''; const btn=slot.querySelector('.slot-remove'); if(btn)btn.remove(); }
+  });
+  document.getElementById('progress-wrap').style.display='none';
   document.getElementById('result-card').classList.remove('show');
-  document.getElementById('progress-bar').style.width = '0%';
-  if (logEl) logEl.innerHTML = '';
+  document.getElementById('progress-bar').style.width='0%';
+  if (logEl) logEl.innerHTML='';
+  checkReady();
 }
 </script>
 </body>
