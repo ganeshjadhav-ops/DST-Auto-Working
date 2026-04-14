@@ -84,26 +84,34 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
   <div class="card">
     <div class="card-title">📂 Step 1 — Upload Input Files</div>
 
-    <!-- RAW -->
-    <div class="section-label">📊 RAW File (Required)</div>
-    <div class="file-slot" id="slot-raw" onclick="triggerUpload('raw')">
-      <input type="file" id="file-raw" accept=".xlsx,.xls" style="display:none" onchange="handleSingle('raw',this)">
-      <div class="slot-icon">📊</div>
-      <div class="slot-info">
-        <div class="slot-name">RAW.xlsx — Settlement data</div>
-        <div class="slot-loaded" id="loaded-raw"></div>
+    <!-- RAW - MULTIPLE -->
+    <div class="section-label">📊 RAW File(s) (Required — Multiple Allowed)</div>
+    <div class="multi-slot" id="slot-raw">
+      <div class="multi-slot-header" onclick="triggerMulti('raw')">
+        <input type="file" id="file-raw-input" accept=".xlsx,.xls" multiple style="display:none" onchange="handleMulti('raw',this)">
+        <div class="slot-icon">📊</div>
+        <div class="slot-info">
+          <div class="slot-name">RAW.xlsx — Settlement data</div>
+          <div class="slot-desc">Click to add one or more RAW files</div>
+        </div>
+        <div style="font-size:11px;color:var(--blue);font-weight:600;">+ Add Files</div>
       </div>
+      <div class="multi-files-list" id="list-raw"></div>
     </div>
 
-    <!-- CHARGE REPORT -->
-    <div class="section-label">💰 Charge Report (Required)</div>
-    <div class="file-slot" id="slot-charge" onclick="triggerUpload('charge')">
-      <input type="file" id="file-charge" accept=".xlsx,.xls" style="display:none" onchange="handleSingle('charge',this)">
-      <div class="slot-icon">💰</div>
-      <div class="slot-info">
-        <div class="slot-name">Charge_report.xlsx — Mandate/Bounce/LPI breakdown</div>
-        <div class="slot-loaded" id="loaded-charge"></div>
+    <!-- CHARGE REPORT - MULTIPLE -->
+    <div class="section-label">💰 Charge Report(s) (Required — Multiple Allowed)</div>
+    <div class="multi-slot" id="slot-charge">
+      <div class="multi-slot-header" onclick="triggerMulti('charge')">
+        <input type="file" id="file-charge-input" accept=".xlsx,.xls" multiple style="display:none" onchange="handleMulti('charge',this)">
+        <div class="slot-icon">💰</div>
+        <div class="slot-info">
+          <div class="slot-name">Charge_report.xlsx — Mandate/Bounce/LPI breakdown</div>
+          <div class="slot-desc">Click to add one or more charge report files</div>
+        </div>
+        <div style="font-size:11px;color:var(--blue);font-weight:600;">+ Add Files</div>
       </div>
+      <div class="multi-files-list" id="list-charge"></div>
     </div>
 
     <!-- TRANSACTION LOGS - MULTIPLE -->
@@ -168,36 +176,15 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
 
 <script>
 // ── FILE STATE ──
-const singleFiles = { raw: null, charge: null };
-const multiFiles  = { txn: [], recon: [] };
-const required = { single: ['raw','charge'], multi: ['txn','recon'] };
+const multiFiles = { raw: [], charge: [], txn: [], recon: [] };
+const required   = ['raw', 'charge', 'txn', 'recon'];
 
-function triggerUpload(key) { document.getElementById('file-'+key).click(); }
-function triggerMulti(key)  { document.getElementById('file-'+key+'-input').click(); }
-
-function handleSingle(key, input) {
-  const file = input.files[0];
-  if (!file) return;
-  singleFiles[key] = file;
-  const slot = document.getElementById('slot-'+key);
-  slot.classList.add('loaded');
-  document.getElementById('loaded-'+key).textContent = '✅ ' + file.name;
-  // remove button
-  const existing = slot.querySelector('.slot-remove');
-  if (existing) existing.remove();
-  const btn = document.createElement('button');
-  btn.className = 'slot-remove';
-  btn.textContent = '✕';
-  btn.onclick = e => { e.stopPropagation(); singleFiles[key]=null; slot.classList.remove('loaded'); document.getElementById('loaded-'+key).textContent=''; btn.remove(); input.value=''; checkReady(); };
-  slot.appendChild(btn);
-  checkReady();
-}
+function triggerMulti(key) { document.getElementById('file-'+key+'-input').click(); }
 
 function handleMulti(key, input) {
   Array.from(input.files).forEach(file => {
-    if (!multiFiles[key].find(f => f.name === file.name)) {
+    if (!multiFiles[key].find(f => f.name === file.name))
       multiFiles[key].push(file);
-    }
   });
   input.value = '';
   renderMultiList(key);
@@ -206,6 +193,7 @@ function handleMulti(key, input) {
 
 function renderMultiList(key) {
   const list = document.getElementById('list-'+key);
+  if (!list) return;
   if (!multiFiles[key].length) { list.innerHTML=''; return; }
   list.innerHTML = multiFiles[key].map((f,i) => `
     <div class="multi-file-item">
@@ -222,9 +210,8 @@ function removeMultiFile(key, idx) {
 }
 
 function checkReady() {
-  const singleOk = required.single.every(k => singleFiles[k] !== null);
-  const multiOk  = required.multi.every(k => multiFiles[k].length > 0);
-  document.getElementById('gen-btn').disabled = !(singleOk && multiOk);
+  const ok = required.every(k => multiFiles[k].length > 0);
+  document.getElementById('gen-btn').disabled = !ok;
 }
 
 // ── XLSX READER ──
@@ -280,21 +267,28 @@ async function generateReport() {
   outputBlob = null;
 
   try {
-    // 1. Read RAW
-    log('Reading RAW file...');
-    const wbRaw = await readExcel(singleFiles.raw);
-    const rawRows = sheetToRows(wbRaw, 'RAW');
-    log(`RAW: ${rawRows.length} rows`, '✅'); setProgress(10);
+    // 1. Read ALL RAW files (merge)
+    log(`Reading ${multiFiles.raw.length} RAW file(s)...`);
+    let rawRows = [];
+    for (const file of multiFiles.raw) {
+      const wb = await readExcel(file);
+      const ws = wb.Sheets['RAW'] || wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+      rawRows = rawRows.concat(rows);
+    }
+    log(`RAW: ${rawRows.length} total rows`, '✅'); setProgress(10);
 
-    // 2. Read Charge Report
-    log('Reading Charge Report...');
-    const wbChr = await readExcel(singleFiles.charge);
-    const chrRows = sheetToRows(wbChr, wbChr.SheetNames[0]);
+    // 2. Read ALL Charge Report files (merge)
+    log(`Reading ${multiFiles.charge.length} Charge Report file(s)...`);
     const chargeByPayId = {};
-    chrRows.forEach(r => {
-      const tid = String(r['transaction_id'] || '').trim();
-      if (tid) chargeByPayId[tid] = r;
-    });
+    for (const file of multiFiles.charge) {
+      const wb = await readExcel(file);
+      const rows = sheetToRows(wb, wb.SheetNames[0]);
+      rows.forEach(r => {
+        const tid = String(r['transaction_id'] || '').trim();
+        if (tid && !chargeByPayId[tid]) chargeByPayId[tid] = r;
+      });
+    }
     log(`Charge Report: ${Object.keys(chargeByPayId).length} entries`, '✅'); setProgress(20);
 
     // 3. Read ALL Transaction Log files (merge Sheet1 + charges + EMI from each)
@@ -353,39 +347,36 @@ async function generateReport() {
       let emi = 0;
 
       // ── CORE LOGIC ──
-      // Rule: TxnLog PAYMENT TYPE decides the split
-      // CHARGE (in TxnLog) → use Charge Report split; if not found → full = Bounce
-      // EMI (in TxnLog)    → full Settled = EMI, no charges
-      // Not in TxnLog:
-      //   RAW type=EMI+CHARGE + Charge Report found with values → apply charges
-      //   RAW type=EMI+CHARGE + no Charge Report                → full = EMI
-      //   RAW type=CHARGE                                       → use Charge Report; if none → full = Bounce
-      //   RAW type=EMI                                          → full = EMI
+      // Priority: RAW payment_type + Charge Report data
+      //
+      // CHARGE (RAW or TxnLog) → use Charge Report split; if none → full = Bounce
+      // EMI+CHARGE → ALWAYS check Charge Report first:
+      //   Charge Report found with values → EMI = Settled - charges
+      //   Charge Report not found / zero  → full = EMI (TxnLog says EMI = no charges)
+      // EMI (RAW) → full = EMI (no charges)
 
-      if (txnPayType === 'CHARGE') {
-        // Transaction log says CHARGE → all Bounce/Mandate/LPI
-        if (!hasCharges) {
-          bounce = settled; // No charge report match → full = bounce
-        }
-        emi = 0;
-      } else if (txnPayType === 'EMI') {
-        // Transaction log says EMI → pure EMI
-        emi = settled; mandate = 0; bounce = 0; lpi = 0;
-      } else {
-        // Not found in TxnLog — use RAW type + Charge Report
-        if (rawPayType === 'CHARGE') {
-          if (!hasCharges) bounce = settled;
-          emi = 0;
-        } else if (rawPayType === 'EMI+CHARGE') {
-          if (hasCharges) {
-            emi = settled - (mandate + bounce + lpi);
-          } else {
-            emi = settled; mandate = 0; bounce = 0; lpi = 0;
-          }
+      if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
+        // Pure charge row
+        if (hasCharges) {
+          // Use charge report split — add emi_alloc to EMI if present
+          const emiAlloc = charge ? cleanNum(charge['emi_alloc']) : 0;
+          emi = emiAlloc;
         } else {
-          // Pure EMI
+          bounce = settled; emi = 0;
+        }
+      } else if (rawPayType === 'EMI+CHARGE') {
+        // Charge Report is the authority for EMI+CHARGE
+        if (hasCharges) {
+          // Charge Report has split → EMI = Settled - (mandate+bounce+lpi)
+          emi = settled - (mandate + bounce + lpi);
+          if (emi < 0) emi = 0;
+        } else {
+          // No charges found → pure EMI
           emi = settled; mandate = 0; bounce = 0; lpi = 0;
         }
+      } else {
+        // Pure EMI
+        emi = settled; mandate = 0; bounce = 0; lpi = 0;
       }
 
       const total = emi + mandate + bounce + lpi;
@@ -513,12 +504,7 @@ async function generateReport() {
 }
 
 function resetTool() {
-  Object.keys(singleFiles).forEach(k => { singleFiles[k]=null; });
   Object.keys(multiFiles).forEach(k => { multiFiles[k]=[]; renderMultiList(k); });
-  ['raw','charge'].forEach(k => {
-    const slot = document.getElementById('slot-'+k);
-    if (slot) { slot.classList.remove('loaded'); document.getElementById('loaded-'+k).textContent=''; const btn=slot.querySelector('.slot-remove'); if(btn)btn.remove(); }
-  });
   document.getElementById('progress-wrap').style.display='none';
   document.getElementById('result-card').classList.remove('show');
   document.getElementById('progress-bar').style.width='0%';
