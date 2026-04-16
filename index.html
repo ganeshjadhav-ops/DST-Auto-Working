@@ -129,15 +129,15 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
       <div class="multi-files-list" id="list-txn"></div>
     </div>
 
-    <!-- SETTLEMENT RECON - MULTIPLE -->
-    <div class="section-label">🏦 Settlement Recon Files (Required — Multiple Allowed)</div>
+    <!-- OTHER SUPPORTING FILES - OPTIONAL MULTIPLE -->
+    <div class="section-label">📎 Other Supporting Files <span style="font-size:10px;color:#888;font-weight:400;text-transform:none;">(Optional)</span></div>
     <div class="multi-slot" id="slot-recon">
       <div class="multi-slot-header" onclick="triggerMulti('recon')">
         <input type="file" id="file-recon-input" accept=".xlsx,.xls" multiple style="display:none" onchange="handleMulti('recon',this)">
-        <div class="slot-icon">🏦</div>
+        <div class="slot-icon">📎</div>
         <div class="slot-info">
-          <div class="slot-name">settlement_recon_YYYYMMDD.xlsx — One or more days</div>
-          <div class="slot-desc">Click to add settlement recon files (Day 1, Day 2, Day 3...)</div>
+          <div class="slot-name">Other supporting files — Settlement Recon, Reference files etc.</div>
+          <div class="slot-desc">Click to add any supporting files (optional)</div>
         </div>
         <div style="font-size:11px;color:var(--blue);font-weight:600;">+ Add Files</div>
       </div>
@@ -177,7 +177,7 @@ body{font-family:'Inter',sans-serif;background:#f0f4f0;min-height:100vh;}
 <script>
 // ── FILE STATE ──
 const multiFiles = { raw: [], charge: [], txn: [], recon: [] };
-const required   = ['raw', 'charge', 'txn', 'recon'];
+const required   = ['raw', 'charge', 'txn'];
 
 function triggerMulti(key) { document.getElementById('file-'+key+'-input').click(); }
 
