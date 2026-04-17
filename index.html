@@ -291,20 +291,42 @@ async function generateReport() {
     }
     log(`Charge Report: ${Object.keys(chargeByPayId).length} entries`, '✅'); setProgress(20);
 
-    // 3. Read ALL Transaction Log files (merge Sheet1 + charges + EMI from each)
+    // 3. Read ALL Transaction Log files — build 2 indexes
+    // txnEmiByPayId  = EMI sheet rows (for date lookup)
+    // txnAllByPayId  = Sheet1 ALL rows per Pay ID (for EMI+CHARGE bifurcation fallback)
     log(`Reading ${multiFiles.txn.length} Transaction Log file(s)...`);
-    const txnByPayId = {};
+    const txnEmiByPayId = {};   // single EMI row per Pay ID
+    const txnAllByPayId = {};   // all rows per Pay ID from Sheet1 (EMI + CHARGE entries)
+
     for (const file of multiFiles.txn) {
       const wb = await readExcel(file);
-      for (const sname of wb.SheetNames) {
-        const rows = sheetToRows(wb, sname);
-        rows.forEach(r => {
-          const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
-          if (tid && tid !== 'None' && !txnByPayId[tid]) txnByPayId[tid] = r;
+      
+      // Sheet1 — has BOTH EMI and CHARGE rows per Pay ID
+      const sheet1Rows = sheetToRows(wb, 'Sheet1');
+      sheet1Rows.forEach(r => {
+        const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
+        if (!tid || tid === 'None') return;
+        if (!txnAllByPayId[tid]) txnAllByPayId[tid] = [];
+        txnAllByPayId[tid].push(r);
+      });
+
+      // EMI sheet — for date lookup
+      const emiRows = sheetToRows(wb, 'EMI');
+      emiRows.forEach(r => {
+        const tid = String(r['TRANSACTION ID'] || r['transaction_id'] || '').trim();
+        if (tid && tid !== 'None' && !txnEmiByPayId[tid]) txnEmiByPayId[tid] = r;
+      });
+
+      // Fallback: if no EMI sheet, use Sheet1 EMI rows
+      if (!emiRows.length) {
+        sheet1Rows.filter(r => String(r['PAYMENT TYPE']||'').toUpperCase() === 'EMI').forEach(r => {
+          const tid = String(r['TRANSACTION ID'] || '').trim();
+          if (tid && !txnEmiByPayId[tid]) txnEmiByPayId[tid] = r;
         });
       }
     }
-    log(`Transaction Logs: ${Object.keys(txnByPayId).length} entries`, '✅'); setProgress(35);
+    log(`Transaction Logs: ${Object.keys(txnAllByPayId).length} Pay IDs in Sheet1, ${Object.keys(txnEmiByPayId).length} in EMI sheet`, '✅');
+    setProgress(35);
 
     // 4. Read ALL Settlement Recon files (merge)
     log(`Reading ${multiFiles.recon.length} Settlement Recon file(s)...`);
@@ -332,64 +354,92 @@ async function generateReport() {
       const settlDate = fmtDate(r['Settlement Date']);
       const source   = String(r['source'] || '').trim();
 
-      // Get Transaction Log entry → determines actual payment type
-      const txn = txnByPayId[payId] || {};
-      const txnPayType = String(txn['PAYMENT TYPE'] || txn['payment_type'] || '').trim().toUpperCase();
-      const emiDate  = fmtDate(txn['DATE'] || txn['date'] || '');
+      // Get Transaction Log entries
+      const txnEmi    = txnEmiByPayId[payId] || {};                // for date
+      const txnAll    = txnAllByPayId[payId]  || [];                // all rows (EMI+CHARGE)
+      const txnFound  = txnAll.length > 0 || Object.keys(txnEmi).length > 0;
+      const txnPayType = String(txnEmi['PAYMENT TYPE'] || txnEmi['payment_type'] || '').trim().toUpperCase();
+      const emiDate   = fmtDate(txnEmi['DATE'] || txnEmi['date'] || '');
+
+      // TxnLog Sheet1 bifurcation — EMI amt and CHARGE amt per Pay ID
+      const txnEmiEntry    = txnAll.find(r => String(r['PAYMENT TYPE']||'').toUpperCase() === 'EMI');
+      const txnChargeEntry = txnAll.find(r => String(r['PAYMENT TYPE']||'').toUpperCase() === 'CHARGE');
+      const txnEmiAmt      = txnEmiEntry    ? cleanNum(txnEmiEntry['TRANSACTION AMT'])    : 0;
+      const txnChargeAmt   = txnChargeEntry ? cleanNum(txnChargeEntry['TRANSACTION AMT']) : 0;
 
       // Get Charge Report entry
-      const charge = chargeByPayId[payId] || null;
-      let mandate  = charge ? cleanNum(charge['mandate_alloc']) : 0;
-      let bounce   = charge ? cleanNum(charge['bounce_alloc'])  : 0;
-      let lpi      = charge ? cleanNum(charge['lpp_alloc'])     : 0;
+      const charge   = chargeByPayId[payId] || null;
+      let mandate    = charge ? cleanNum(charge['mandate_alloc']) : 0;
+      let bounce     = charge ? cleanNum(charge['bounce_alloc'])  : 0;
+      let lpi        = charge ? cleanNum(charge['lpp_alloc'])     : 0;
+      const emiAlloc = charge ? cleanNum(charge['emi_alloc'])     : 0;
       const hasCharges = mandate > 0 || bounce > 0 || lpi > 0;
 
       let emi = 0;
       let isDoubtful = false;
       let doubtReason = '';
-
-      // Flag if Pay ID not found in Transaction Log at all
-      const txnFound = Object.keys(txn).length > 0;
+      let splitSource = '';
 
       // ── CORE LOGIC ──
+      //
+      // Priority 1: Charge Report (most accurate)
+      // Priority 2: TxnLog Sheet1 EMI+CHARGE bifurcation (fallback)
+      // Priority 3: DOUBTFUL if neither has data
+
       if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
+        // CHARGE type:
+        // bounce_alloc + emi_alloc = total bounce (emi_alloc is actually part of bounce for CHARGE rows)
         if (hasCharges) {
-          const chargeTotal = mandate + bounce + lpi;
-          emi = settled - chargeTotal;
+          bounce = bounce + emiAlloc; // emi_alloc flows into bounce for CHARGE type
+          lpi    = lpi;
+          emi    = settled - (mandate + bounce + lpi);
           if (emi < 1) emi = 0;
+          splitSource = 'Charge Report';
+        } else if (txnChargeAmt > 0) {
+          bounce = txnChargeAmt;
+          emi    = 0;
+          splitSource = 'TxnLog';
         } else {
           bounce = settled; emi = 0;
+          splitSource = 'Default';
         }
       } else if (txnPayType === 'BOUNCE' || (txnPayType && /^bounce$/i.test(txnPayType.trim()))) {
         bounce = settled; emi = 0;
-      } else if (rawPayType === 'EMI+CHARGE') {
+        splitSource = 'TxnLog-BOUNCE';
+      } else if (rawPayType === 'EMI+CHARGE' || (txnEmiAmt > 0 && txnChargeAmt > 0)) {
+        // EMI+CHARGE — try Charge Report first, then TxnLog bifurcation
         if (hasCharges) {
-          emi = settled - (mandate+bounce+lpi);
+          emi    = settled - (mandate + bounce + lpi);
           if (emi < 0) emi = 0;
+          splitSource = 'Charge Report';
+        } else if (txnEmiAmt > 0 && txnChargeAmt > 0) {
+          // TxnLog has both EMI and CHARGE entries for this Pay ID
+          emi    = txnEmiAmt;
+          bounce = txnChargeAmt;  // treat charge amt as bounce (will be verified)
+          splitSource = 'TxnLog';
         } else {
-          // EMI+CHARGE but no Charge Report match — CANNOT assume pure EMI
+          // No charge data anywhere — DOUBTFUL
           emi = settled; mandate=0; bounce=0; lpi=0;
+          splitSource = 'Unknown';
         }
       } else {
         // Pure EMI
         emi = settled; mandate=0; bounce=0; lpi=0;
+        splitSource = 'EMI';
       }
 
       const total = emi + mandate + bounce + lpi;
       const diff  = settled - total;
 
       // ── DOUBT CHECK ──
-      // 1. Total != Settled
       if (Math.abs(diff) > 0.5) {
         isDoubtful = true;
         doubtReason = `Total(${total.toFixed(0)}) != Settled(${settled.toFixed(0)}), Diff=${diff.toFixed(0)}`;
       }
-      // 2. EMI+CHARGE but Charge Report not found — split unknown
-      if (!isDoubtful && rawPayType === 'EMI+CHARGE' && !hasCharges) {
+      if (!isDoubtful && rawPayType === 'EMI+CHARGE' && !hasCharges && !(txnEmiAmt > 0 && txnChargeAmt > 0)) {
         isDoubtful = true;
-        doubtReason = `RAW type is EMI+CHARGE but no matching entry in Charge Report — split unknown`;
+        doubtReason = `RAW type is EMI+CHARGE — not found in Charge Report or TxnLog bifurcation`;
       }
-      // 3. Pay ID not found in Transaction Log at all — split unverified
       if (!isDoubtful && !txnFound) {
         isDoubtful = true;
         doubtReason = `Pay ID not found in Transaction Log — split unverified`;
@@ -408,7 +458,7 @@ async function generateReport() {
         'Settled Amount': settled,
         'Lender UTR': utr,
         'Settlement Date': settlDate,
-        'Type in Transaction Log': txnPayType || r['payment_type'] || '',
+        'Type in Transaction Log': txnPayType || (txnChargeAmt > 0 ? 'EMI+CHARGE' : r['payment_type'] || ''),
         'EMI ': emi > 0 ? emi : '',
         'Mandate Charges': mandate > 0 ? mandate : '',
         'Bounce Charges': bounce > 0 ? bounce : '',
