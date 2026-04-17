@@ -356,7 +356,6 @@ async function generateReport() {
         if (hasCharges) {
           const chargeTotal = mandate + bounce + lpi;
           emi = settled - chargeTotal;
-          // For pure CHARGE rows, emi_alloc is a system artifact — ignore tiny EMI values
           if (emi < 1) emi = 0;
         } else {
           bounce = settled; emi = 0;
@@ -368,6 +367,7 @@ async function generateReport() {
           emi = settled - (mandate+bounce+lpi);
           if (emi < 0) emi = 0;
         } else {
+          // EMI+CHARGE but no Charge Report match — CANNOT assume pure EMI
           emi = settled; mandate=0; bounce=0; lpi=0;
         }
       } else {
@@ -382,12 +382,17 @@ async function generateReport() {
       // 1. Total != Settled
       if (Math.abs(diff) > 0.5) {
         isDoubtful = true;
-        doubtReason = `MANUAL CHECK REQUIRED — Total(${total.toFixed(0)}) != Settled(${settled.toFixed(0)}), Diff=${diff.toFixed(0)}`;
+        doubtReason = `Total(${total.toFixed(0)}) != Settled(${settled.toFixed(0)}), Diff=${diff.toFixed(0)}`;
       }
-      // 2. Pay ID not found in Transaction Log — split might be wrong
-      if (!txnFound && !isDoubtful) {
+      // 2. EMI+CHARGE but Charge Report not found — split unknown
+      if (!isDoubtful && rawPayType === 'EMI+CHARGE' && !hasCharges) {
         isDoubtful = true;
-        doubtReason = `MANUAL CHECK REQUIRED — Pay ID not found in Transaction Log, split unverified`;
+        doubtReason = `RAW type is EMI+CHARGE but no matching entry in Charge Report — split unknown`;
+      }
+      // 3. Pay ID not found in Transaction Log at all — split unverified
+      if (!isDoubtful && !txnFound) {
+        isDoubtful = true;
+        doubtReason = `Pay ID not found in Transaction Log — split unverified`;
       }
 
       dstRows.push({
