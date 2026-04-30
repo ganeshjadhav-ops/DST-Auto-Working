@@ -382,23 +382,21 @@ async function generateReport() {
 
       // ── CORE LOGIC ──
       //
-      // Priority 1: Charge Report (most accurate)
-      // Priority 2: TxnLog Sheet1 EMI+CHARGE bifurcation (fallback)
-      // Priority 3: DOUBTFUL if neither has data
+      // Rule 1: Charge Report emi_alloc → always goes to Bounce Charges (never EMI)
+      // Rule 2: Not in Charge Report but in TxnLog Charge tab → Bounce Charges
+      // Rule 3: Only EMI column has amount → Payment Type = "EMI" (ignore RAW payment_type)
 
       if (rawPayType === 'CHARGE' || txnPayType === 'CHARGE') {
-        // CHARGE type:
-        // bounce_alloc + emi_alloc = total bounce (emi_alloc is actually part of bounce for CHARGE rows)
-        if (hasCharges) {
-          bounce = bounce + emiAlloc; // emi_alloc flows into bounce for CHARGE type
-          lpi    = lpi;
+        // CHARGE type — Rule 1: emi_alloc → bounce
+        if (hasCharges || emiAlloc > 0) {
+          bounce = bounce + emiAlloc; // emi_alloc always treated as bounce
           emi    = settled - (mandate + bounce + lpi);
           if (emi < 1) emi = 0;
           splitSource = 'Charge Report';
         } else if (txnChargeAmt > 0) {
-          bounce = txnChargeAmt;
-          emi    = 0;
-          splitSource = 'TxnLog';
+          // Rule 2: found in TxnLog Charge tab → bounce
+          bounce = txnChargeAmt; emi = 0;
+          splitSource = 'TxnLog-Charge';
         } else {
           bounce = settled; emi = 0;
           splitSource = 'Default';
@@ -407,29 +405,34 @@ async function generateReport() {
         bounce = settled; emi = 0;
         splitSource = 'TxnLog-BOUNCE';
       } else if (rawPayType === 'EMI+CHARGE' || (txnEmiAmt > 0 && txnChargeAmt > 0)) {
-        // EMI+CHARGE — try Charge Report first, then TxnLog bifurcation
-        if (hasCharges) {
+        if (hasCharges || emiAlloc > 0) {
+          // Rule 1: emi_alloc → bounce
+          bounce = bounce + emiAlloc;
           emi    = settled - (mandate + bounce + lpi);
           if (emi < 0) emi = 0;
           splitSource = 'Charge Report';
         } else if (txnEmiAmt > 0 && txnChargeAmt > 0) {
-          // TxnLog has both EMI and CHARGE entries for this Pay ID
+          // Rule 2: TxnLog bifurcation — charge amt → bounce
           emi    = txnEmiAmt;
-          bounce = txnChargeAmt;  // treat charge amt as bounce (will be verified)
+          bounce = txnChargeAmt;
           splitSource = 'TxnLog';
         } else {
-          // No charge data anywhere — DOUBTFUL
           emi = settled; mandate=0; bounce=0; lpi=0;
           splitSource = 'Unknown';
         }
       } else {
-        // Pure EMI
+        // Pure EMI — Rule 3: only EMI in output → tag as EMI
         emi = settled; mandate=0; bounce=0; lpi=0;
         splitSource = 'EMI';
       }
 
       const total = emi + mandate + bounce + lpi;
       const diff  = settled - total;
+
+      // Rule 3: Determine final DPM payment type tag
+      // If only EMI column has value (no charges) → "EMI" regardless of RAW payment_type
+      const onlyEmi = emi > 0 && mandate === 0 && bounce === 0 && lpi === 0;
+      const finalPayType = onlyEmi ? 'EMI' : rawPayType;
 
       // ── DOUBT CHECK ──
       if (Math.abs(diff) > 0.5) {
@@ -451,7 +454,7 @@ async function generateReport() {
         'Pay ID': payId,
         'Application ID': appId,
         'Order ID': orderId,
-        'payment_type': r['payment_type'] || '',
+        'payment_type': finalPayType,
         'payment_uuid': r['payment_uuid'] || '',
         'source_id': r['source_id'] || '',
         'source': source,
